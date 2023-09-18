@@ -1,0 +1,231 @@
+@page "/MessagePlatform/{userName}"
+@page "/MessagePlatform"
+@using HttpClients.ClientInterfaces
+@using Domain.Model
+@using System.Timers
+@using Domain.DTOs
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserService userService;
+@inject IMessageService messageService;
+@attribute [Authorize]
+
+
+<h1>
+    <span class="badge bg-secondary align-content-center">Message Platform</span>
+</h1>
+@if (users == null)
+{
+    <span>Loading..</span>
+}
+else
+{
+    <div class="row">
+        <div class="col-sm-4">
+            @if (string.IsNullOrWhiteSpace(userName))
+            {
+                <form class="d-flex">
+                    <input class="form-control me-2 mb-5" type="text" @bind="userNameSearch" placeholder="Search for Tutors">
+                    <button class="btn btn-primary mb-5" type="button" @onclick="SearchTutorByUsername">Search</button>
+                </form>
+            }
+
+            <div class="list-group">
+                @foreach (User? user in users)
+                {
+                    if (!user.UserName.Equals(sender.UserName))
+                    {
+                        <button class="btn btn-outline-primary" @onclick="() => OpenChat(user)">@user.UserName</button>
+                    }
+                }
+            </div>
+        </div>
+        <div class="col-sm-8">
+            <div hidden="@chat">
+                <div class="card" style="width:600px">
+
+                    <div id="btn-close-delete">
+
+                        <button class="btn btn-outline-danger" @onclick="@DeleteConversation">Delete Conversation</button>
+                        <button class="btn btn-outline-danger" @onclick="@CloseChat">Close</button>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="list-group" style="height: 400px; overflow-y: auto;">
+                            @if (messages.Count == 0)
+                            {
+                                <h3>
+                                    <span class="badge bg-danger align-content-center">No conversation available</span>
+                                </h3>
+                            }
+                            else
+                            {
+                                @foreach (MessageDto message in messages)
+                                {
+                                    @if (message.Sender.UserName.Equals(sender.UserName))
+                                    {
+                                        <ul class="message-right"> @message.Sender.UserName : @message.Message</ul>
+                                    }
+                                    else
+                                    {
+                                        <ul class="message-left"> @message.Sender.UserName : @message.Message</ul>
+                                    }
+                                }
+                            }
+
+                        </div>
+                        <button class="btn btn-outline-primary" disabled="@(string.IsNullOrWhiteSpace(msg))" @onclick="() => SendMessage(receiver)">Send Message</button>
+                        <div>
+                            <label for="comment">Write Message:</label>
+                            <textarea class="form-control" rows="2" id="comment" name="text"@bind="msg">@msg</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@code {
+    bool chat = true;
+
+    [Parameter]
+    public string userName { get; set; }
+
+    private string userNameSearch;
+
+    List<MessageDto> messages;
+
+    async void OpenChat(User receiver)
+    {
+        if (chat)
+        {
+            chat = false;
+        }
+        this.receiver = receiver;
+        messages = await messageService.ShowMessages(sender.Id, receiver.Id);
+    }
+
+    void CloseChat()
+    {
+        chat = true;
+    }
+
+    private IEnumerable<User>? users;
+    private IEnumerable<User>? searchedUsers;
+    private IEnumerable<User>? tutors;
+    private string msg = "";
+    private int i = 0;
+    private Timer timer;
+
+    User sender;
+    User receiver = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            msg = "";
+            messages = new();
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            IEnumerable<User> test = await userService.GetUsers();
+            sender = test.First(u => u.UserName.Equals(authState.User.Identity?.Name));
+
+            tutors = await userService.GetUsers();
+            tutors = tutors.Where(u => u.UserType.Equals("tutor", StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(userName))
+            {
+                users = tutors.Where(u => u.UserName.Equals(userName));
+            }
+            else
+            {
+                users = await messageService.GetConversations(sender.Id);
+            }
+
+            StartTimer();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+
+    private void StartTimer()
+    {
+        timer = new Timer(1000); // Refresh every 1 second
+        timer.Elapsed += async (sender, e) => await ReceiveMessages();
+        timer.AutoReset = true;
+        timer.Start();
+    }
+
+    private async Task ReceiveMessages()
+    {
+        MessageDto message = await messageService.Receive(sender.UserName);
+        if (message != null)
+        {
+            if ((message.Sender.UserName.Equals(receiver.UserName) || message.Receiver.UserName.Equals(receiver.UserName))
+                && (message.Receiver.UserName.Equals(sender.UserName) || message.Sender.UserName.Equals(sender.UserName)))
+            {
+                messages.Add(message);
+            }
+        }
+        
+        users = await messageService.GetConversations(sender.Id);
+        
+        if (string.IsNullOrWhiteSpace(userName))
+        {
+            if (!string.IsNullOrWhiteSpace(userNameSearch))
+            {
+                users = users?.Where(u => u.UserName.Contains(userNameSearch));
+            }
+        }
+        else
+        {
+            users = new []{await userService.SearchTutorByUsername(userName)};
+        }
+        
+        
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SendMessage(User receiver)
+    {
+        MessageDto dto = new MessageDto(sender, receiver, msg);
+        MessageDto sent = await messageService.Send(dto);
+        messages.Add(sent);
+        msg = "";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SearchTutorByUsername()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(userNameSearch))
+            {
+                users = users?.Where(u => u.UserName.Contains(userNameSearch));
+            }
+            else
+            {
+                users = await messageService.GetConversations(sender.Id);
+            }
+            chat = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    private async void DeleteConversation()
+    {
+        bool confirmation = await messageService.DeleteConversation(sender.Id, receiver.Id);
+        if (confirmation)
+        {
+            users = await messageService.GetConversations(sender.Id);
+            chat = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+}}

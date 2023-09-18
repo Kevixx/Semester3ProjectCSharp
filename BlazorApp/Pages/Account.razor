@@ -1,0 +1,145 @@
+@page "/Account"
+@using HttpClients.ClientInterfaces
+@using Domain.Model
+@using Domain.DTOs
+@inject ICourseService courseService
+@inject IUserService userService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager navMgr
+@attribute [Authorize]
+
+@if (tutor == null)
+{
+    <span>Loading..</span>
+}
+else
+{
+    <div class="container">
+        <h1> <span class="badge bg-secondary align-content-center my-2">Account Information</span></h1>
+        <div class="row">
+            <div class="col-6 custom-column">
+                <div class="container">
+                    <div>
+                        <h1>@tutor.User.UserName</h1>
+                    </div>
+                    <form>
+                        <div class="form-group">
+                            <label for="textAreaInput">Profile Bio:</label>
+                            <textarea class="form-control" id="textAreaInput" rows="3" disabled="@tutor.User.UserType.Equals("User", StringComparison.OrdinalIgnoreCase)" @bind="tutor.Description"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 custom-column">
+                                <table class="table">
+                                    <thead>
+                                    <tr>
+                                        <th>Course Name</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach (var item in tutor.Courses)
+                                    {
+                                        <tr>
+                                            <td>@item</td>
+                                        </tr>
+                                    }
+                                    <tr>
+                                        <td>
+                                            <img src="icons/edit.gif" class="edit" @onclick="ToggleCourseTable"/>
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-6 custom-column">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" disabled="@tutor.User.UserType.Equals("User", StringComparison.OrdinalIgnoreCase)" @onclick="UpdateTutor">Save</button>
+                    </form>
+                    <button type="submit" class="btn btn-outline-danger mt-2" @onclick="DeleteAccount">DeleteAccount</button>
+                </div>
+            </div>
+            <div class="col-6 custom-column">
+                <div class="container" hidden="@courseTable">
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th>Course Name</th>
+                            <th>Add</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var item in Courses)
+                        {
+                            <tr>
+                                <td>@item</td>
+                                <td>
+                                    <input type="checkbox" checked="@tutor.Courses.Contains(item)" @onchange="e => SelectedTutorCourse(item, e.Value.ToString())">
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+   
+}
+
+
+@code {
+    public IEnumerable<string>? Courses;
+    public string username;
+    private TutorInformationDto? tutor;
+    private bool courseTable = true;
+
+    private void ToggleCourseTable()
+    {
+        if (courseTable && !tutor.User.UserType.Equals("User", StringComparison.OrdinalIgnoreCase))
+        {
+            courseTable = false;
+        }
+        else
+        {
+            courseTable = true;
+        }
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            username = authState.User.Identity.Name;
+            tutor = await userService.GetTutorAsync(username);
+            Courses = await courseService.GetCourses(null);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    private void SelectedTutorCourse(string course, string isChecked)
+    {
+        if (isChecked.ToLower().Equals("true"))
+        {
+            tutor.Courses.Add(course);
+        }
+        else
+        {
+            tutor.Courses.Remove(course);
+        }
+    }
+
+    private async Task UpdateTutor()
+    {
+        navMgr.NavigateTo("/");
+       await userService.UpdateProfile(tutor);
+    }
+
+    private async Task DeleteAccount()
+    {
+        await userService.DeleteAccount(tutor.User.Id);
+        navMgr.NavigateTo("/", forceLoad:true);
+    }
+}

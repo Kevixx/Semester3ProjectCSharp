@@ -1,0 +1,166 @@
+@page "/ViewTutors"
+@attribute [Authorize]
+@using HttpClients.ClientInterfaces
+@using Domain.Model
+@using Microsoft.AspNetCore.Authorization
+@using Domain.DTOs
+@inject IUserService userService
+@inject ICourseService courseService
+@inject NavigationManager navMgr
+
+<h1> <span class="badge bg-secondary align-content-center">Tutor Dashboard</span></h1>
+@if (Courses == null)
+{
+    <span>Loading..</span>
+}
+else
+{
+    <div class="container-fluid mt-2 d-inline-flex">
+        <select @oninput="HandleChange">
+            @foreach (string course in Courses)
+                {
+                    <option value="@course">@course</option>
+                }
+        </select>
+        <form class="d-flex">
+            <input class="form-control me-2" type="text" @bind="searchByUsername" placeholder="Search">
+            <button class="btn btn-primary" type="button" @onclick="searchTutorByUsername">Search</button>
+        </form>
+    </div>
+}
+@if (!string.IsNullOrEmpty(msg))
+{
+    <div>
+        <span>@msg</span>
+    </div>
+}
+
+@if (users == null)
+{
+    <span>Loading..</span>
+}
+else
+{
+    <div class="users-container">
+        @foreach (User user in users)
+        {
+            <div class="user-card" style="width:300px">
+              <img class="card-img-top" src="icons/user.png" alt="Card image">
+              <div class="card-body">
+                  <h4 class="card-title">@user.UserName</h4>
+                  <p class="card-text">@TruncateDescription(descriptions[user.UserName])</p>
+              </div>
+              <button class="btn btn-outline-success" @onclick="(() => ViewProfileAsync(user.UserName))">View Profile</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+
+    string username = "username";
+    private IEnumerable<User>? users;
+    private IEnumerable<User>? tutors;
+    private string msg = "";
+    private string course;
+    public string searchByUsername = "";
+    public IEnumerable<string>? Courses;
+    private Dictionary<string, string> descriptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        msg = "";
+        try
+        {
+            tutors = await userService.GetUsers();
+            tutors = tutors.Where(u => u.UserType.Equals("tutor", StringComparison.OrdinalIgnoreCase));
+            users = tutors;
+            
+            Courses = await courseService.GetCourses(null);
+            await FetchDescriptionsAsync();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            msg = e.Message;
+        }
+    }
+    
+    private async Task FetchDescriptionsAsync()
+    {
+        foreach (User user in users)
+        {
+            TutorInformationDto description = await GetTutorAsync(user.UserName);
+            descriptions[user.UserName] = description.Description;
+        }
+    }
+
+    private async Task<TutorInformationDto> GetTutorAsync(string UserName)
+    {
+        return await userService.GetTutorAsync(UserName);
+    }
+    
+    private string TruncateDescription(string description)
+    {
+        const int maxLength = 50;
+        if (description.Length <= maxLength)
+        {
+            return description;
+        }
+        else
+        {
+            return description.Substring(0, maxLength) + "...";
+        }
+    }
+
+    private async Task ViewProfileAsync(string userName)
+    {
+        navMgr.NavigateTo($"/ViewProfile/{userName}");
+    }
+
+    private async Task searchTutorByUsername()
+    {
+        try
+        {
+            users = new[] { await userService.SearchTutorByUsername(searchByUsername) };
+            msg = "";
+        }
+        catch (Exception e)
+        {
+            users = tutors;
+            msg = "User not found";
+            Console.WriteLine(e);
+        }
+        
+    }
+
+    private void HandleChange(ChangeEventArgs e)
+    {
+        course = e.Value.ToString();
+        searchByCourse(course);
+    }
+
+    private async Task searchByCourse(string course)
+    {
+        try
+        {
+            IEnumerable<UserToTutorDto> dto = await courseService.GetTutorByCourse(course);
+            List<User> found = new List<User>();
+            foreach (var user in dto)
+            {
+                found.Add(user.User);
+            }
+            users = found;
+            StateHasChanged();
+        }
+        catch (Exception e)
+        {
+            users = new List<User>();
+            Console.WriteLine(e);
+            msg = "No tutors found for this course";
+            StateHasChanged();
+            
+        }
+    }
+    
+}

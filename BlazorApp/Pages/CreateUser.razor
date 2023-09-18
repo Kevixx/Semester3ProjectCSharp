@@ -1,0 +1,63 @@
+@page "/CreateUser"
+@using Domain.DTOs
+@using HttpClients.ClientInterfaces
+@inject IUserService userService;
+
+<h1> <span class="badge bg-secondary align-content-center">Create a Profile</span></h1>
+<div class="row">
+    <div class="col-4"></div>
+    <div class="col-4">
+        <div class="card" style="width:400px">
+            <img class="card-img-top" src="icons/minion.gif" alt="Card image">
+            <div class="card-body">
+                <div class="row-cols-auto content  clearfix align-content-center">
+                    <label>Username:</label>
+                    <input type="text" @bind="userName" @bind:event="oninput"/>
+
+                </div>
+                <div class="row-cols-auto content clearfix align-content-center">
+                    <label> Password:</label>
+                    <input type="password" @bind="password" @bind:event="oninput"/>
+                </div>
+                <div class="button-row">
+                    <button @onclick="Create" disabled="@(string.IsNullOrWhiteSpace(userName) || (string.IsNullOrWhiteSpace(password)))" class="acceptbtn">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-4"></div>
+    @if (!string.IsNullOrEmpty(resultMsg))
+    {
+        <label style="color: @color">@resultMsg</label>
+    }
+</div>
+
+
+
+@code {
+    private string userName = "";
+    private string password = "";
+    private string resultMsg = "";
+    private string color = "";
+    
+    private async Task Create()
+    {
+        resultMsg = "";
+
+        try
+        {
+            Console.WriteLine("here");
+            await userService.Create(new UserCreationDto(userName, password, "User"));
+            userName = "";
+            password = "";
+            resultMsg = "User successfully created";
+            color = "green";
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            resultMsg = e.Message;
+            color = "red";
+        }
+    }
+}
